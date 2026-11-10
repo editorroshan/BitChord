@@ -136,6 +136,7 @@ private fun desktopMain() = application {
                 composeWindow.setLocationRelativeTo(null)
                 // The tall title strip the top bar sits in, with the window buttons centred in it.
                 DesktopMacWindow.installUnifiedToolbar("BitChord")
+                DesktopMacWindow.watchFullScreen(composeWindow)
             }
             if (DesktopPlatform.isWindows && DesktopWindowsFrame.install("BitChord")) {
                 DesktopWindowBackdrop.apply()

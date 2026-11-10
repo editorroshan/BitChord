@@ -7,9 +7,12 @@ import com.sun.jna.Pointer
 import java.awt.Desktop
 import java.awt.EventQueue
 import java.awt.desktop.AppReopenedListener
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.JFrame
+import javax.swing.Timer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -110,6 +113,43 @@ internal object DesktopMacWindow {
             }
         }.onFailure { DesktopTrackLog.log("mac window: toolbar not installed (${it.message})") }
     }
+
+    /**
+     * Whether the window is in macOS full screen. There the system draws the toolbar as a solid
+     * strip pinned to the top of the screen, which hid the app's own top bar under a black band;
+     * so in full screen the toolbar is put away, and the strip only slides down with the menu bar.
+     */
+    private val _fullScreen = MutableStateFlow(false)
+    val fullScreen: StateFlow<Boolean> = _fullScreen
+
+    /** Follows the window into and out of full screen. Resizes are how AWT hears of either. */
+    fun watchFullScreen(window: JFrame) {
+        if (!DesktopPlatform.isMac) return
+        window.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) {
+                refreshFullScreen()
+                // The style mask settles at the end of the transition animation, after the last
+                // resize, so look once more when it is over.
+                Timer(FULL_SCREEN_SETTLE_MS) { refreshFullScreen() }.apply { isRepeats = false }.start()
+            }
+        })
+    }
+
+    private fun refreshFullScreen() {
+        runCatching {
+            ObjC.onMain {
+                val window = ObjC.findWindow(windowTitle) ?: return@onMain
+                val full = (ObjC.sendLong(window, "styleMask") and STYLE_MASK_FULL_SCREEN) != 0L
+                ObjC.send(window, "toolbar")?.let { toolbar ->
+                    ObjC.send(toolbar, "setVisible:", if (full) 0L else 1L)
+                }
+                _fullScreen.value = full
+            }
+        }
+    }
+
+    private const val STYLE_MASK_FULL_SCREEN = 1L shl 14
+    private const val FULL_SCREEN_SETTLE_MS = 900
 
     private val holds = AtomicInteger(0)
     @Volatile private var windowTitle = "BitChord"

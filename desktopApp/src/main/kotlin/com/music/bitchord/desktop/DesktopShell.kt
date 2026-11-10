@@ -255,13 +255,15 @@ internal fun DesktopShellTopBar(
     val titleBarEnabled by DesktopTitleBarSetting.enabled.collectAsState()
     val inlineCaption = DesktopPlatform.drawsOwnWindowFrame && !titleBarEnabled
     val unified by DesktopMacWindow.unified.collectAsState()
+    // In full screen the window buttons only appear with the menu bar, over the top of the page.
+    val fullScreen by DesktopMacWindow.fullScreen.collectAsState()
     DesktopTitleBarDragArea(Modifier.fillMaxWidth().height(SHELL_TOP_BAR_HEIGHT)) {
         CenteredBar(
             Modifier.fillMaxSize().padding(end = 14.dp),
             leading = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     when {
-                        DesktopPlatform.hasInsetWindowButtons ->
+                        DesktopPlatform.hasInsetWindowButtons && !fullScreen ->
                             Spacer(Modifier.width(if (unified) MAC_LIGHTS_UNIFIED else MAC_LIGHTS_PLAIN))
                         inlineCaption -> {
                             Spacer(Modifier.width(12.dp))
