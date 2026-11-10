@@ -96,8 +96,17 @@ internal fun DesktopTitleBarDragArea(
 ) {
     val scope = LocalDesktopWindowScope.current
     val actions = LocalDesktopWindowActions.current
-    if (!DesktopPlatform.drawsOwnWindowFrame || scope == null) {
+    if (!DesktopPlatform.chromeMovesWindow || scope == null) {
         Box(modifier) { content() }
+        return
+    }
+    if (DesktopPlatform.isMac) {
+        // macOS moves the window itself when its title strip is dragged — see
+        // [DesktopMacWindow.installUnifiedToolbar] — but leaves the double click to the app.
+        Box(modifier) {
+            Box(Modifier.matchParentSize().macCaptionDoubleClick(actions))
+            content()
+        }
         return
     }
     // Behind the content rather than around it. Wrapped around it, the drag area saw every press
@@ -252,3 +261,41 @@ private fun Modifier.captionPress(scope: WindowScope, actions: DesktopWindowActi
             }
         }
     }
+
+/**
+ * A double click on empty title strip does what the system's own title bars do with one: whatever
+ * Desktop & Dock's "Double-click a window's title bar to" is set to — zoom, by default.
+ */
+private fun Modifier.macCaptionDoubleClick(actions: DesktopWindowActions?): Modifier =
+    pointerInput(actions) {
+        var lastPressAt = 0L
+        var lastPressPosition = Offset.Zero
+        awaitEachGesture {
+            val down = awaitFirstDown()
+            val double = down.uptimeMillis - lastPressAt <= viewConfiguration.doubleTapTimeoutMillis &&
+                (down.position - lastPressPosition).getDistance() <= viewConfiguration.touchSlop
+            if (!double) {
+                lastPressAt = down.uptimeMillis
+                lastPressPosition = down.position
+                return@awaitEachGesture
+            }
+            lastPressAt = 0L
+            when (MacDoubleClickAction.value) {
+                "Minimize" -> actions?.minimize?.invoke()
+                "None" -> Unit
+                else -> actions?.toggleMaximize?.invoke()
+            }
+        }
+    }
+
+private object MacDoubleClickAction {
+    val value: String by lazy {
+        runCatching {
+            val process = ProcessBuilder("defaults", "read", "-g", "AppleActionOnDoubleClick")
+                .redirectErrorStream(true)
+                .start()
+            val text = process.inputStream.bufferedReader().readText().trim()
+            if (process.waitFor() == 0) text else "Maximize"
+        }.getOrDefault("Maximize")
+    }
+}

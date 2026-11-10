@@ -13,8 +13,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import bitchord.desktopapp.generated.resources.Res
@@ -26,6 +28,8 @@ import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.painterResource
 
 fun main() {
+    // Before anything touches AWT: macOS reads how the app's windows and menus look only once.
+    DesktopMacWindow.configureBeforeAwt()
     // The player is the phone's, from the shared UI module; this is what it reads underneath.
     PlayerPlatform.install(DesktopPlayerHost)
     com.music.bitchord.ui.AppUi.install(DesktopAppUiHost)
@@ -63,7 +67,12 @@ private fun desktopMain() = application {
     // Hoisted so the player can fill the screen and the caption buttons can maximize — see
     // [DesktopWindowMode].
     val placement by DesktopWindowMode.placement.collectAsState()
-    val state = rememberWindowState(width = 1_220.dp, height = 780.dp)
+    val state = rememberWindowState(
+        width = 1_280.dp,
+        height = 820.dp,
+        // In the middle of the screen rather than wherever the system cascades a first window to.
+        position = WindowPosition.Aligned(Alignment.Center),
+    )
     LaunchedEffect(placement) { state.placement = placement }
     // ...and back, for the times the window is moved between placements by something that is not
     // us; see [DesktopWindowMode.adopt].
@@ -84,9 +93,14 @@ private fun desktopMain() = application {
         // material is possible and the chosen one can be switched live — see [DesktopWindowBackdrop].
         transparent = DesktopWindowBackdrop.available,
         resizable = true,
+        // Whatever the page did not want: the transport's shortcuts — see [DesktopCommands].
+        onKeyEvent = DesktopCommands::onWindowKey,
     ) {
         val composeWindow = window
         val openingSize = remember { state.size }
+        // Before the first frame, so the window never shows with a title bar it then loses.
+        remember(composeWindow) { DesktopMacWindow.install(composeWindow) }
+        DesktopMenuBar()
         LaunchedEffect(composeWindow) {
             // AWT's default is white, and it is what shows for the frame or two a moved or resized
             // window takes to repaint: a white band along its edges.
@@ -98,10 +112,15 @@ private fun desktopMain() = application {
             }
             // AWT measures this in device pixels while Compose's window state is in dp. Keeping
             // the scale in the conversion makes the usable minimum consistent on every display.
+            // Not on macOS, where AWT already works in points: scaled again there, a Retina
+            // display's factor of two made the minimum 1800 points wide — the whole screen — so
+            // the window opened filling it and could not be made any smaller.
             val transform = composeWindow.graphicsConfiguration.defaultTransform
+            val scaleX = if (DesktopPlatform.isMac) 1.0 else transform.scaleX
+            val scaleY = if (DesktopPlatform.isMac) 1.0 else transform.scaleY
             composeWindow.minimumSize = Dimension(
-                (MIN_WINDOW_WIDTH_DP * transform.scaleX).roundToInt(),
-                (MIN_WINDOW_HEIGHT_DP * transform.scaleY).roundToInt(),
+                (MIN_WINDOW_WIDTH_DP * scaleX).roundToInt(),
+                (MIN_WINDOW_HEIGHT_DP * scaleY).roundToInt(),
             )
             // Setting AWT's minimum during the first composition can resize the native peer to
             // that minimum without updating Compose's state. Compose would then keep laying out a
@@ -109,9 +128,15 @@ private fun desktopMain() = application {
             // boundary off-screen until a maximize/restore cycle synchronised the two. Re-assert
             // the requested opening size on the native peer so both layers start in agreement.
             composeWindow.size = Dimension(
-                (openingSize.width.value * transform.scaleX).roundToInt(),
-                (openingSize.height.value * transform.scaleY).roundToInt(),
+                (openingSize.width.value * scaleX).roundToInt(),
+                (openingSize.height.value * scaleY).roundToInt(),
             )
+            // The resize above keeps the corner where it was, which is no longer the middle.
+            if (DesktopPlatform.isMac) {
+                composeWindow.setLocationRelativeTo(null)
+                // The tall title strip the top bar sits in, with the window buttons centred in it.
+                DesktopMacWindow.installUnifiedToolbar("BitChord")
+            }
             if (DesktopPlatform.isWindows && DesktopWindowsFrame.install("BitChord")) {
                 DesktopWindowBackdrop.apply()
             }

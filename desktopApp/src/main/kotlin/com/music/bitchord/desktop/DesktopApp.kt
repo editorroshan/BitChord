@@ -329,7 +329,7 @@ import org.jetbrains.compose.resources.painterResource
  */
 internal val DesktopPageGutter = PAGE_GUTTER
 
-internal val DesktopBackground = Color(0xFF202020)
+internal val DesktopBackground = ShellPanel
 internal val DesktopSurface = Color(0xFF0D0D0F)
 private val DesktopSurfaceRaised = Color(0xFF1C1C1E)
 internal val DesktopGlass = Color(0x661C1C1E)
@@ -339,7 +339,7 @@ internal val DesktopGlassStrong = Color(0xCC0D0D0F)
 private val DesktopBarGlass = Color(0xB324242A)
 
 /** The backdrop the floating bars blur. */
-private val LocalDesktopHaze = staticCompositionLocalOf<HazeState?> { null }
+internal val LocalDesktopHaze = staticCompositionLocalOf<HazeState?> { null }
 
 /** How much a page's scrollable should keep clear of the floating bars. */
 private val LocalDesktopBottomInset = staticCompositionLocalOf { 0.dp }
@@ -402,7 +402,7 @@ private const val STATS_MAX_DELTA_MS = 15_000L
 private const val SCROBBLE_THRESHOLD_MS = 180_000L
 
 /** Used for tracking restart of the current song when previous button is pressed. */
-private const val BACK_RESTARTS_AFTER_MS = 10_000L
+internal const val BACK_RESTARTS_AFTER_MS = 10_000L
 
 /** How long the supplier waits for the server to echo an AutoPlay queue addition. */
 private const val PARTY_AUTOPLAY_ECHO_TIMEOUT_MS = 5_000L
@@ -457,7 +457,7 @@ internal fun desktopTypography(): Typography {
     )
 }
 
-private enum class DesktopDestination(val id: String, val label: String) {
+internal enum class DesktopDestination(val id: String, val label: String) {
     LISTEN_NOW("listen-now", "Home"),
     EXPLORE("explore", "Explore"),
     LIBRARY("library", "Library"),
@@ -468,7 +468,7 @@ private enum class DesktopDestination(val id: String, val label: String) {
     SETTINGS("settings", "Settings"),
 }
 
-private enum class DesktopRepeatMode {
+internal enum class DesktopRepeatMode {
     OFF,
     ALL,
     ONE,
@@ -501,27 +501,42 @@ fun BitChordDesktopApp() {
     var availableUpdate by remember { mutableStateOf<DesktopUpdateChecker.UpdateInfo?>(null) }
     LaunchedEffect(Unit) { availableUpdate = DesktopUpdateChecker.check() }
     availableUpdate?.let { update ->
-        AlertDialog(
-            onDismissRequest = { availableUpdate = null },
-            title = { Text(DesktopStrings["d_update_available", "Update available"]) },
-            text = {
-                Text(
-                    "BitChord ${update.version} is out — you have ${DesktopUpdateChecker.currentVersion}." +
-                        (update.notes?.takeIf { it.isNotBlank() }?.let { "\n\n${it.take(600)}" } ?: ""),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    DesktopExternalLinks.open(update.downloadUrl ?: update.releaseUrl)
-                    availableUpdate = null
-                }) { Text(DesktopStrings["d_download", "Download"]) }
-            },
-            dismissButton = {
-                TextButton(onClick = { availableUpdate = null }) {
-                    Text(DesktopStrings["d_later", "Later"])
-                }
-            },
-        )
+        // Drawn before the app's theme is set up, so it is given the same one here.
+        MaterialTheme(colorScheme = desktopColorScheme(), typography = desktopTypography()) {
+            AlertDialog(
+                onDismissRequest = { availableUpdate = null },
+                containerColor = Color(0xFF1E1E21),
+                titleContentColor = Color.White,
+                textContentColor = Color.White.copy(alpha = 0.78f),
+                shape = RoundedCornerShape(18.dp),
+                title = { Text(DesktopStrings["d_update_available", "Update available"]) },
+                text = {
+                    // Release notes are Markdown: drop the pictures and the heading marks.
+                    val notes = update.notes.orEmpty().lines()
+                        .filterNot { it.trimStart().startsWith("![") }
+                        .joinToString("\n") { it.trimStart('#', ' ').let { line -> if (line.startsWith("- ")) "•  " + line.drop(2) else line } }
+                        .replace(Regex("\n{3,}"), "\n\n")
+                        .trim()
+                        .take(600)
+                    Text(
+                        "BitChord ${update.version} is out — you have ${DesktopUpdateChecker.currentVersion}." +
+                            (notes.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: ""),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        DesktopExternalLinks.open(update.downloadUrl ?: update.releaseUrl)
+                        availableUpdate = null
+                    }) { Text(DesktopStrings["d_download", "Download"], color = Color.White, fontWeight = FontWeight.SemiBold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { availableUpdate = null }) {
+                        Text(DesktopStrings["d_later", "Later"], color = DesktopSecondary)
+                    }
+                },
+            )
+        }
     }
     var destination by remember { mutableStateOf(DesktopDestination.LISTEN_NOW) }
     var query by remember { mutableStateOf("") }
@@ -2839,6 +2854,33 @@ fun BitChordDesktopApp() {
         partySyncHolder[0]?.onLocalIntent()
     }
 
+    // The keyboard's and the menu bar's way in — see [DesktopCommands]. Refreshed every
+    // composition so each reaches the state as it is now.
+    SideEffect {
+        DesktopCommands.playPause = { if (selectedSong != null) togglePlayPauseFromUser() }
+        DesktopCommands.next = { playNext() }
+        DesktopCommands.previous = { playPrevious() }
+        DesktopCommands.nudgeVolume = { step ->
+            volume = (volume + step).coerceIn(0f, 1f)
+            persistence.saveString("volume", volume.toString())
+        }
+        DesktopCommands.back = { goBack() }
+        DesktopCommands.focusSearch = { searchFocusRequested = true }
+        DesktopCommands.goHome = { selectDestination(DesktopDestination.LISTEN_NOW) }
+        DesktopCommands.goExplore = { selectDestination(DesktopDestination.EXPLORE) }
+        DesktopCommands.goLibrary = { selectDestination(DesktopDestination.LIBRARY) }
+        DesktopCommands.openSettings = { openSettings() }
+        DesktopCommands.openPlayer = { if (selectedSong != null) overlays.nowPlaying = true }
+        DesktopCommands.toggleLyrics = { if (selectedSong != null) overlays.toggleSidePanel(DesktopSidePanel.LYRICS) }
+        DesktopCommands.toggleQueue = { if (selectedSong != null) overlays.toggleSidePanel(DesktopSidePanel.QUEUE) }
+    }
+    LaunchedEffect(Unit) {
+        DesktopMacWindow.installAppHandlers(
+            onReopen = DesktopWindowVisibility::show,
+            onPreferences = { DesktopCommands.openSettings() },
+        )
+    }
+
     MaterialTheme(
         colorScheme = desktopColorScheme(),
         typography = desktopTypography(),
@@ -2847,8 +2889,7 @@ fun BitChordDesktopApp() {
             LocalContentColor provides Color.White,
             LocalNowPlaying provides selectedSong,
         ) {
-            DesktopFrame(
-                // The phone's page is black, not the near-black of its cards.
+            DesktopShellFrame(
                 containerColor = DesktopBackground,
                 // Only Replay dresses itself; everywhere else the chrome sits on the plain surface.
                 backdrop = { transparentBase ->
@@ -2905,22 +2946,63 @@ fun BitChordDesktopApp() {
                         else -> false
                     }
                 },
-                topBar = { compact ->
-                    DesktopTopBar(
-                        compact = compact,
+                topBar = {
+                    DesktopShellTopBar(
+                        query = query,
+                        onQueryChange = { text ->
+                            editQuery(text)
+                            if (destination != DesktopDestination.SEARCH || overlays.settingsPage != null || openedCollection != null) {
+                                selectDestination(DesktopDestination.SEARCH)
+                            }
+                        },
+                        onSearch = ::search,
+                        onClearSearch = { editQuery("") },
+                        homeSelected = destination == DesktopDestination.LISTEN_NOW &&
+                            overlays.settingsPage == null && openedCollection == null,
+                        browseSelected = destination == DesktopDestination.EXPLORE &&
+                            overlays.settingsPage == null && openedCollection == null,
+                        onHome = { selectDestination(DesktopDestination.LISTEN_NOW) },
+                        onBrowse = { selectDestination(DesktopDestination.EXPLORE) },
+                        canGoBack = navHistory.isNotEmpty(),
+                        onBack = ::goBack,
+                        accountAvatar = activeAccount?.avatar
+                            ?: activeAccount?.profiles?.firstOrNull()?.avatar,
+                        onOpenAccounts = { DesktopTrackLog.log("accounts: opening the switcher"); overlays.accounts = true },
+                        focusSearch = searchFocusRequested,
+                        onSearchFocused = { searchFocusRequested = false },
+                    )
+                },
+                sidebar = { rail ->
+                    val queued by DesktopDownloadQueue.active.collectAsState()
+                    DesktopShellSidebar(
+                        rail = rail,
+                        destination = destination,
+                        settingsOpen = overlays.settingsPage != null,
+                        accountPlaylists = sidebarAccountPlaylists,
+                        localPlaylists = playlists,
+                        openedCollectionId = openedCollection?.browseId,
+                        downloadsActive = queued.size,
+                        onDestinationSelected = ::selectDestination,
+                        onOpenAccountPlaylist = { openShelfItem(it, PLAYLISTS_SHELF) },
+                        onOpenLocalPlaylist = ::openPlaylist,
+                        onNewPlaylist = { overlays.playlistDialog = true },
+                        onOpenSettings = ::openSettings,
+                    )
+                },
+                player = { width ->
+                    DesktopShellPlayer(
+                        width = width,
                         song = selectedSong,
                         isPlaying = playback.isPlaying,
                         isLoading = playback.isLoading,
+                        position = playerPosition,
+                        durationMs = playback.durationMs,
                         previousEnabled = liveQueue.hasPrevious ||
                             playback.positionMs > BACK_RESTARTS_AFTER_MS,
-                        progress = if (playback.durationMs > 0L) {
-                            playback.positionMs.toFloat() / playback.durationMs.toFloat()
-                        } else {
-                            0f
-                        },
                         volume = playback.volume,
                         shuffle = shuffle,
                         repeatMode = repeatMode,
+                        sidePanel = overlays.sidePanel,
                         onPlayPause = { if (selectedSong != null) togglePlayPauseFromUser() },
                         onPrevious = ::playPrevious,
                         onNext = ::playNext,
@@ -2929,56 +3011,15 @@ fun BitChordDesktopApp() {
                             repeatMode = it
                             persistence.saveString("repeat_mode", it.name)
                         },
+                        onSeek = ::seekPlayer,
                         onOpenNowPlaying = { overlays.nowPlaying = true },
                         onVolumeChange = {
                             volume = it
                             persistence.saveString("volume", it.toString())
                         },
                         onOpenAudioOutput = { overlays.audioOutput = true },
-                        // A second click on the same button puts the column away, as in Apple Music.
                         onOpenLyrics = { overlays.toggleSidePanel(DesktopSidePanel.LYRICS) },
                         onOpenQueue = { overlays.toggleSidePanel(DesktopSidePanel.QUEUE) },
-                        sidePanel = overlays.sidePanel,
-                        accountAvatar = activeAccount?.avatar
-                            ?: activeAccount?.profiles?.firstOrNull()?.avatar,
-                        onOpenAccounts = { DesktopTrackLog.log("accounts: opening the switcher"); overlays.accounts = true },
-                        canGoBack = navHistory.isNotEmpty(),
-                        onBack = ::goBack,
-                    )
-                },
-                sidebar = {
-                    DesktopSidebar(
-                        destination = destination,
-                        settingsOpen = overlays.settingsPage != null,
-                        accountPlaylists = sidebarAccountPlaylists,
-                        localPlaylists = playlists,
-                        openedCollectionId = openedCollection?.browseId,
-                        query = query,
-                        onQueryChange = { text ->
-                            editQuery(text)
-                            if (destination != DesktopDestination.SEARCH || overlays.settingsPage != null) {
-                                selectDestination(DesktopDestination.SEARCH)
-                            }
-                        },
-                        onSearch = ::search,
-                        onDestinationSelected = ::selectDestination,
-                        onOpenAccountPlaylist = { openShelfItem(it, PLAYLISTS_SHELF) },
-                        onOpenLocalPlaylist = ::openPlaylist,
-                        onOpenSettings = ::openSettings,
-                        focusSearch = searchFocusRequested,
-                        onSearchFocused = { searchFocusRequested = false },
-                    )
-                },
-                bottomBar = { compact ->
-                    DesktopBottomChrome(
-                        compact = compact,
-                        destination = destination,
-                        song = selectedSong,
-                        isPlaying = playback.isPlaying,
-                        onDestinationSelected = ::selectDestination,
-                        onExpand = { overlays.nowPlaying = true },
-                        onPlayPause = { if (selectedSong != null) togglePlayPauseFromUser() },
-                        onNext = ::playNext,
                     )
                 },
                 trailing = {
@@ -3690,23 +3731,19 @@ fun BitChordDesktopApp() {
                             downloadInProgress = downloadInProgress,
                             contentPadding = contentPadding,
                         )
-                        destination == DesktopDestination.LISTEN_NOW -> HomeScreen(
+                        destination == DesktopDestination.LISTEN_NOW -> DesktopHomePage(
                             state = homeState,
                             listState = homeListState,
-                            onItemClick = { item, shelfTitle -> openShelfItem(item, shelfTitle) },
-                            onRetry = ::loadHome,
-                            refreshing = false,
-                            onRefresh = ::loadHome,
-                            pullState = rememberPullToRefreshState(),
                             contentPadding = sharedPagePadding,
-                            title = null,
                             signedIn = youtubeSignedIn,
                             onSignIn = { overlays.accounts = true },
-                            onItemLongPress = { item -> if (item.videoId != null) openMenu(item.toSong()) },
+                            onItemClick = { item, shelfTitle -> openShelfItem(item, shelfTitle) },
+                            onItemMenu = { item -> if (item.videoId != null) openMenu(item.toSong()) },
+                            onRetry = ::loadHome,
                             onLoadMore = ::loadMoreHome,
                             loadingMore = homeLoadingMore,
-                            recentlyPlayedLoading = homeRecentsLoading,
-                            leadHero = false,
+                            recentsLoading = homeRecentsLoading,
+                            currentSong = selectedSong,
                         )
                         destination == DesktopDestination.EXPLORE && selectedMoodGenre != null -> Column(Modifier.fillMaxSize()) {
                             MoodGenrePlaylistsScreen(
@@ -3932,291 +3969,6 @@ fun BitChordDesktopApp() {
 }
 
 @Composable
-private fun DesktopTopBar(
-    compact: Boolean,
-    song: Song?,
-    isPlaying: Boolean,
-    isLoading: Boolean,
-    previousEnabled: Boolean,
-    progress: Float,
-    volume: Float,
-    shuffle: Boolean,
-    repeatMode: DesktopRepeatMode,
-    onPlayPause: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onShuffleChange: (Boolean) -> Unit,
-    onRepeatModeChange: (DesktopRepeatMode) -> Unit,
-    onOpenNowPlaying: () -> Unit,
-    onVolumeChange: (Float) -> Unit,
-    onOpenAudioOutput: () -> Unit,
-    onOpenLyrics: () -> Unit,
-    onOpenQueue: () -> Unit,
-    /** Which of the two the column beside the page is showing, lit on its button. */
-    sidePanel: DesktopSidePanel?,
-    accountAvatar: String?,
-    onOpenAccounts: () -> Unit,
-    /** The app's one way back — every page's own arrow was folded into this. */
-    canGoBack: Boolean,
-    onBack: () -> Unit,
-) {
-    val titleBarEnabled by DesktopTitleBarSetting.enabled.collectAsState()
-    val inlineCaption = DesktopPlatform.drawsOwnWindowFrame && !titleBarEnabled
-    // The same beat clock the player's scrubber runs, so this line and the player breathe
-    // together through an Automix blend.
-    val mixBlend = DesktopPlayerSettings.smartMixBlend.collectAsState()
-    val reduceAnimation by DesktopPlayerSettings.reduceAnimation.collectAsState()
-    val mixPulse = rememberMixPulse({ mixBlend.value }, enabled = !reduceAnimation)
-    val currentProgress by rememberUpdatedState(progress)
-
-    // Apple Music uses one calm strip for both player controls and window furniture. The left
-    // sidebar owns the traffic lights; the rest is a balanced transport / now-playing / utility
-    // layout with deliberately smaller glyphs than the phone player.
-    DesktopTitleBarDragArea(Modifier.fillMaxWidth().height(64.dp)) {
-        Box(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            // The window's own buttons live at the head of the sidebar; a compact window has no
-            // sidebar, so there they lead this bar instead.
-            if (compact && inlineCaption) {
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .desktopWindowGlass(DesktopChromeEdge.BOTTOM)
-                        .padding(start = 10.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    DesktopWindowButtons()
-                }
-            }
-            Row(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .desktopWindowGlass(DesktopChromeEdge.BOTTOM)
-                    .padding(start = 14.dp, end = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // The mark leads the player's own controls, now that the sidebar runs to the top.
-                Image(
-                    painter = painterResource(Res.drawable.logo_mark),
-                    contentDescription = "BitChord",
-                    modifier = Modifier.size(width = 28.dp, height = 18.dp),
-                )
-                Spacer(Modifier.width(14.dp))
-                DesktopToolbarButton(onClick = onBack, enabled = canGoBack, size = 32.dp) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.ArrowBack,
-                        DesktopStrings["back", "Back"],
-                        tint = if (canGoBack) Color.White else DesktopSecondary.copy(alpha = 0.40f),
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Spacer(Modifier.width(6.dp))
-                if (!compact) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(0.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        DesktopToolbarButton(onClick = { onShuffleChange(!shuffle) }, size = 32.dp) {
-                            Icon(
-                                BitChordIcons.Shuffle,
-                                DesktopStrings["shuffle", "Shuffle"],
-                                tint = if (shuffle) DesktopAccent else DesktopSecondary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        DesktopToolbarButton(onClick = onPrevious, enabled = previousEnabled, size = 32.dp) {
-                            Icon(
-                                Icons.Rounded.FastRewind,
-                                DesktopStrings["widget_previous", "Previous"],
-                                tint = if (previousEnabled) Color.White else DesktopSecondary.copy(alpha = 0.40f),
-                                modifier = Modifier.size(21.dp),
-                            )
-                        }
-                        DesktopToolbarButton(onClick = onPlayPause, size = 32.dp) {
-                            if (isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(
-                                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    if (isPlaying) "Pause" else "Play",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(23.dp),
-                                )
-                            }
-                        }
-                        DesktopToolbarButton(onClick = onNext, size = 32.dp) {
-                            Icon(
-                                Icons.Rounded.FastForward,
-                                DesktopStrings["widget_next", "Next"],
-                                tint = Color.White,
-                                modifier = Modifier.size(21.dp),
-                            )
-                        }
-                        DesktopToolbarButton(
-                            onClick = { onRepeatModeChange(repeatMode.next()) },
-                            size = 32.dp,
-                        ) {
-                            val tint = if (repeatMode != DesktopRepeatMode.OFF) DesktopAccent else DesktopSecondary
-                            if (repeatMode == DesktopRepeatMode.ONE) {
-                                Text(
-                                    "1",
-                                    color = tint,
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.semantics { contentDescription = "Repeat one" },
-                                )
-                            } else {
-                                Icon(
-                                    BitChordIcons.Repeat,
-                                    "Repeat ${repeatMode.label()}",
-                                    tint = tint,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                    }
-
-                    Box(
-                        Modifier.weight(1f).padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .widthIn(min = 300.dp, max = 520.dp)
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(4.dp))
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable(onClick = onOpenNowPlaying),
-                            color = Color(0xFF323236),
-                            tonalElevation = 0.dp,
-                        ) {
-                            Box(Modifier.fillMaxSize()) {
-                                if (song == null) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            BitChordIcons.MusicNote,
-                                            DesktopStrings["playback_channel_name", "Now playing"],
-                                            tint = DesktopSecondary.copy(alpha = 0.65f),
-                                            modifier = Modifier.size(21.dp),
-                                        )
-                                    }
-                                } else {
-                                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                                        DesktopArtwork(
-                                            song.thumbnailUrl,
-                                            Modifier.size(44.dp).clip(RoundedCornerShape(3.dp)),
-                                            px = ROW_ART_PX,
-                                        )
-                                        Column(
-                                            Modifier.weight(1f).padding(start = 12.dp, end = 56.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                        ) {
-                                            Text(
-                                                song.title,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.SemiBold,
-                                            )
-                                            Text(
-                                                song.artist,
-                                                color = DesktopSecondary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                style = MaterialTheme.typography.labelSmall,
-                                            )
-                                        }
-                                    }
-                                    // Drawn rather than sized: through a blend the line covers
-                                    // the full width and pulses on the beat, as the player's
-                                    // scrubber does, and reading either in draw keeps the frame
-                                    // clock from recomposing the whole bar.
-                                    Box(
-                                        Modifier
-                                            .align(Alignment.BottomStart)
-                                            .padding(start = 44.dp)
-                                            .fillMaxWidth()
-                                            .height(2.dp)
-                                            .drawBehind {
-                                                val base = currentProgress.coerceIn(0f, 1f)
-                                                val fraction = base + (1f - base) * mixPulse.cover
-                                                drawRect(
-                                                    color = Color.White.copy(alpha = mixPulse.alpha(0.48f)),
-                                                    size = Size(size.width * fraction, size.height),
-                                                )
-                                            },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Spacer(Modifier.weight(1f))
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(1.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Rounded.VolumeUp,
-                        DesktopStrings["d_volume", "Volume"],
-                        tint = DesktopSecondary,
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    DesktopThinSlider(
-                        value = volume,
-                        onValueChange = onVolumeChange,
-                        idleHeight = 4.dp,
-                        activeHeight = 8.dp,
-                        modifier = Modifier.width(78.dp),
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    DesktopToolbarButton(onClick = onOpenAudioOutput, size = 32.dp) {
-                        Icon(
-                            Icons.Rounded.Headphones,
-                            DesktopStrings["audio_output", "Audio output"],
-                            tint = DesktopSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                    DesktopToolbarButton(onClick = onOpenLyrics, size = 32.dp) {
-                        Icon(
-                            BitChordIcons.LyricsQuote,
-                            DesktopStrings["lyrics", "Lyrics"],
-                            tint = if (sidePanel == DesktopSidePanel.LYRICS) Color.White else DesktopSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                    DesktopToolbarButton(onClick = onOpenQueue, size = 32.dp) {
-                        Icon(
-                            BitChordIcons.Queue,
-                            DesktopStrings["queue", "Queue"],
-                            tint = if (sidePanel == DesktopSidePanel.QUEUE) Color.White else DesktopSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                    DesktopAccountButton(avatar = accountAvatar, onClick = onOpenAccounts)
-                }
-            }
-            }
-            HorizontalDivider(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                thickness = 1.dp,
-                color = desktopChromeDivider(),
-            )
-        }
-    }
-}
-
-@Composable
 internal fun DesktopToolbarButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
@@ -4235,295 +3987,6 @@ internal fun DesktopToolbarButton(
         contentAlignment = Alignment.Center,
     ) {
         content()
-    }
-}
-
-@Composable
-private fun DesktopSidebar(
-    destination: DesktopDestination,
-    settingsOpen: Boolean,
-    accountPlaylists: List<ShelfItem>,
-    localPlaylists: List<DesktopPlaylist>,
-    openedCollectionId: String?,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onSearch: () -> Unit,
-    onDestinationSelected: (DesktopDestination) -> Unit,
-    onOpenAccountPlaylist: (ShelfItem) -> Unit,
-    onOpenLocalPlaylist: (DesktopPlaylist) -> Unit,
-    onOpenSettings: () -> Unit,
-    /** Search was picked: the sidebar's box is the page's field, so it takes the focus. */
-    focusSearch: Boolean,
-    onSearchFocused: () -> Unit,
-) {
-    val searchFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(focusSearch) {
-        if (focusSearch) {
-            runCatching { searchFocusRequester.requestFocus() }
-            onSearchFocused()
-        }
-    }
-    val windowInfo = LocalWindowInfo.current
-    var searchFocused by remember { mutableStateOf(false) }
-    var restoreSearchFocus by remember { mutableStateOf(false) }
-
-    LaunchedEffect(windowInfo.isWindowFocused) {
-        if (!windowInfo.isWindowFocused) {
-            restoreSearchFocus = searchFocused
-        } else if (restoreSearchFocus) {
-            // Let the desktop window finish its activation before asking Compose to put the native
-            // text input target back in focus.
-            yield()
-            searchFocusRequester.requestFocus()
-            restoreSearchFocus = false
-        }
-    }
-
-    val titleBarEnabled by DesktopTitleBarSetting.enabled.collectAsState()
-    val inlineCaption = DesktopPlatform.drawsOwnWindowFrame && !titleBarEnabled
-    Box(
-        Modifier
-            .width(220.dp)
-            .fillMaxHeight()
-            .desktopWindowGlass(DesktopChromeEdge.END, fade = 0.07f),
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            // The sidebar runs to the top of the window, so its head is the window's caption: the
-            // three buttons, and room to take hold of the window by.
-            if (inlineCaption) {
-                DesktopTitleBarDragArea(Modifier.fillMaxWidth().height(SIDEBAR_CAPTION_HEIGHT)) {
-                    Box(Modifier.fillMaxSize().padding(start = 10.dp), contentAlignment = Alignment.CenterStart) {
-                        DesktopWindowButtons()
-                    }
-                }
-            }
-        Column(
-            Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = if (inlineCaption) 4.dp else 16.dp, bottom = 16.dp),
-        ) {
-            DesktopSearchField(
-                query = query,
-                onQueryChange = onQueryChange,
-                onSearch = onSearch,
-                focusRequester = searchFocusRequester,
-                onFocusChanged = { searchFocused = it },
-            )
-            Spacer(Modifier.height(20.dp))
-            DesktopSidebarItem(BitChordIcons.Home, DesktopStrings["home", "Home"], destination == DesktopDestination.LISTEN_NOW) {
-                onDestinationSelected(DesktopDestination.LISTEN_NOW)
-            }
-            DesktopSidebarItem(BitChordIcons.Explore, "Explore", destination == DesktopDestination.EXPLORE) {
-                onDestinationSelected(DesktopDestination.EXPLORE)
-            }
-            DesktopSidebarItem(BitChordIcons.Library, "Library", destination == DesktopDestination.LIBRARY) {
-                onDestinationSelected(DesktopDestination.LIBRARY)
-            }
-            DesktopSidebarItem(BitChordIcons.Search, "Search", destination == DesktopDestination.SEARCH) {
-                onDestinationSelected(DesktopDestination.SEARCH)
-            }
-            Spacer(Modifier.height(6.dp))
-            HorizontalDivider(color = desktopChromeDivider())
-            Spacer(Modifier.height(12.dp))
-            DesktopSidebarItem(BitChordIcons.Clock, "History", destination == DesktopDestination.HISTORY) {
-                onDestinationSelected(DesktopDestination.HISTORY)
-            }
-            val queued by DesktopDownloadQueue.active.collectAsState()
-            DesktopSidebarItem(
-                BitChordIcons.Download,
-                if (queued.isEmpty()) "Downloads" else "Downloads · ${queued.size}",
-                destination == DesktopDestination.DOWNLOADS,
-            ) {
-                onDestinationSelected(DesktopDestination.DOWNLOADS)
-            }
-            DesktopSidebarItem(BitChordIcons.Library, "Local Music", destination == DesktopDestination.LOCAL_MUSIC) {
-                onDestinationSelected(DesktopDestination.LOCAL_MUSIC)
-            }
-            Spacer(Modifier.height(6.dp))
-            HorizontalDivider(color = desktopChromeDivider())
-            Spacer(Modifier.height(12.dp))
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = PaddingValues(bottom = 8.dp),
-            ) {
-                items(accountPlaylists, key = { "account:${it.browseId}" }) { playlist ->
-                    DesktopSidebarItem(
-                        Icons.AutoMirrored.Rounded.PlaylistPlay,
-                        playlist.title,
-                        openedCollectionId == playlist.browseId,
-                    ) { onOpenAccountPlaylist(playlist) }
-                }
-                items(localPlaylists, key = { "local:${it.id}" }) { playlist ->
-                    DesktopSidebarItem(
-                        Icons.AutoMirrored.Rounded.PlaylistPlay,
-                        playlist.title,
-                        openedCollectionId == playlist.id,
-                    ) { onOpenLocalPlaylist(playlist) }
-                }
-                if (accountPlaylists.isEmpty() && localPlaylists.isEmpty()) {
-                    item {
-                        Text(
-                            "Your playlists will appear here",
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
-                            color = DesktopSecondary.copy(alpha = 0.68f),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-            HorizontalDivider(color = desktopChromeDivider())
-            Spacer(Modifier.height(8.dp))
-            DesktopSidebarItem(Icons.Rounded.Settings, "Settings", settingsOpen) {
-                onOpenSettings()
-            }
-        }
-        }
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .width(1.dp)
-                .fillMaxHeight()
-                .background(desktopChromeDivider()),
-        )
-    }
-}
-
-@Composable
-private fun DesktopSidebarItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(7.dp))
-            .background(if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, label, tint = if (selected) DesktopAccent else DesktopSecondary, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(
-            label,
-            color = if (selected) Color.White else DesktopSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun DesktopBottomChrome(
-    compact: Boolean,
-    destination: DesktopDestination,
-    song: Song?,
-    isPlaying: Boolean,
-    onDestinationSelected: (DesktopDestination) -> Unit,
-    onExpand: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (compact && song != null) {
-            DesktopMiniPlayer(
-                song = song,
-                isPlaying = isPlaying,
-                onExpand = onExpand,
-                onPlayPause = onPlayPause,
-                onNext = onNext,
-            )
-        }
-        DesktopFloatingNavigation(destination, onDestinationSelected)
-    }
-}
-
-@Composable
-private fun DesktopFloatingNavigation(
-    destination: DesktopDestination,
-    onDestinationSelected: (DesktopDestination) -> Unit,
-) {
-    val tabs = listOf(
-        DesktopDestination.LISTEN_NOW to (BitChordIcons.Play to "Play"),
-        DesktopDestination.EXPLORE to (BitChordIcons.Explore to "Explore"),
-        DesktopDestination.LIBRARY to (BitChordIcons.Library to "Library"),
-        DesktopDestination.SEARCH to (BitChordIcons.Search to "Search"),
-    )
-    val selected = tabs.firstOrNull { it.first == destination }?.first ?: DesktopDestination.LIBRARY
-    val shape = RoundedCornerShape(percent = 50)
-    Surface(
-        modifier = Modifier
-            .widthIn(max = 440.dp)
-            .fillMaxWidth()
-            .clip(shape)
-            .desktopBarGlass(shape),
-        shape = shape,
-        color = Color.Transparent,
-        tonalElevation = 0.dp,
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            tabs.forEach { (item, iconAndLabel) ->
-                val isSelected = item == selected
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(percent = 50))
-                        .background(if (isSelected) DesktopAccent.copy(alpha = 0.18f) else Color.Transparent)
-                        .clickable { onDestinationSelected(item) }
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(iconAndLabel.first, iconAndLabel.second, tint = if (isSelected) DesktopAccent else DesktopSecondary, modifier = Modifier.size(20.dp))
-                    Text(iconAndLabel.second, color = if (isSelected) Color.White else DesktopSecondary, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DesktopMiniPlayer(
-    song: Song,
-    isPlaying: Boolean,
-    onExpand: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-) {
-    val shape = RoundedCornerShape(percent = 50)
-    Row(
-        Modifier
-            .widthIn(max = 440.dp)
-            .fillMaxWidth()
-            .clip(shape)
-            .desktopBarGlass(shape)
-            .clickable(onClick = onExpand)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        DesktopArtwork(song.thumbnailUrl, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)), px = ROW_ART_PX)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-            Text(song.artist, color = DesktopSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(onClick = onPlayPause) {
-            Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (isPlaying) "Pause" else "Play", tint = Color.White)
-        }
-        IconButton(onClick = onNext) {
-            Icon(Icons.Rounded.FastForward, DesktopStrings["widget_next", "Next"], tint = Color.White)
-        }
     }
 }
 
@@ -4590,105 +4053,8 @@ internal fun DesktopSearchField(
     }
 }
 
-@Composable
-private fun DesktopFrame(
-    containerColor: Color,
-    modifier: Modifier = Modifier,
-    /**
-     * The open page's own colours, painted across the whole window rather than only the content
-     * area, so the title bar, top bar and sidebar take their tint from the page they are framing
-     * instead of staying a flat slab beside it.
-     */
-    /** Receives true when its solid base should be left clear for the system material. */
-    backdrop: @Composable (transparentBase: Boolean) -> Unit,
-    topBar: @Composable (Boolean) -> Unit,
-    sidebar: @Composable () -> Unit,
-    bottomBar: @Composable (Boolean) -> Unit,
-    /** The column on the far side of the page — the lyrics or the queue, when one is open. */
-    trailing: @Composable () -> Unit = {},
-    overlay: @Composable () -> Unit = {},
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    // Held out here rather than inside the constraints box.
-    val haze = remember { HazeState() }
-    // With a system material active, the window stays clear under its chrome. The app-background
-    // preference decides whether the page and side column also stay clear or retain their solid
-    // gray ground.
-    val material by DesktopWindowBackdrop.active.collectAsState()
-    val appBackground by DesktopWindowBackdrop.appBackground.collectAsState()
-    val glass = material != DesktopBackdrop.OFF
-    val materialBehindApp = glass && appBackground
-    CompositionLocalProvider(LocalDesktopHaze provides haze) {
-        Box(modifier.fillMaxSize().then(if (glass) Modifier else Modifier.background(containerColor))) {
-            // Both sources of the same state: the chrome blurs the backdrop behind it, and the
-            // floating bottom bar blurs the page scrolling under it.
-            if (!glass) Box(Modifier.fillMaxSize().hazeSource(haze)) { backdrop(false) }
-            Column(Modifier.fillMaxSize()) {
-                // Above everything, and outside the box the rest of the window is drawn in, because
-                // that is what a title bar is.
-                DesktopTitleBar()
-                Box(Modifier.fillMaxWidth().weight(1f)) {
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
-                        val compact = maxWidth < 980.dp
-                        // The sidebar runs the full height of the window, its head the window's
-                        // caption; the player's bar and the page share the column beside it.
-                        Row(Modifier.fillMaxSize()) {
-                            if (!compact) sidebar()
-                            Column(Modifier.weight(1f).fillMaxHeight()) {
-                            topBar(compact)
-                            Row(Modifier.fillMaxWidth().weight(1f)) {
-                                Box(
-                                    Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .then(
-                                            if (glass && !materialBehindApp) {
-                                                Modifier.background(containerColor)
-                                            } else {
-                                                Modifier
-                                            },
-                                        ),
-                                ) {
-                                    Box(Modifier.fillMaxSize().hazeSource(haze)) {
-                                        if (glass) backdrop(materialBehindApp)
-                                        content(
-                                            PaddingValues(
-                                                start = 0.dp,
-                                                end = 0.dp,
-                                                // Room for the bar that floats over this, so the
-                                                // last row can still be scrolled clear of it.
-                                                bottom = if (compact) 128.dp else 16.dp,
-                                            ),
-                                        )
-                                    }
-                                    if (compact) {
-                                        Box(Modifier.align(Alignment.BottomCenter)) { bottomBar(true) }
-                                    }
-                                }
-                                Box(
-                                    Modifier
-                                        .fillMaxHeight()
-                                        .then(
-                                            if (glass && !materialBehindApp) {
-                                                Modifier.background(containerColor)
-                                            } else {
-                                                Modifier
-                                            },
-                                        ),
-                                ) { trailing() }
-                            }
-                            }
-                        }
-                    }
-                    overlay()
-                }
-            }
-        }
-    }
-}
-
 /**
- * What [DesktopFrame] paints behind the window.
+ * What [DesktopShellFrame] paints behind the window.
  *
  * [artworkUrl] is the page's lead artwork when it has one, and the mesh built from it is laid under
  * ink so a page of text stays readable over it.
@@ -4999,7 +4365,6 @@ private data class DesktopNavEntry(
 private const val NAV_HISTORY_LIMIT = 50
 
 /** The strip at the head of the sidebar that holds the window's buttons and can be dragged by. */
-private val SIDEBAR_CAPTION_HEIGHT = 34.dp
 
 
 @Composable
@@ -7374,7 +6739,7 @@ private val SHELF_DURATION = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
 private val SHELF_TALLY = Regex("[0-9,.]+\\s*(?:views?|likes?|songs?)", RegexOption.IGNORE_CASE)
 private val SHELF_TYPE_WORDS = setOf("song", "video", "album", "ep", "single", "playlist", "mix")
 
-private fun formatTime(ms: Long): String {
+internal fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1_000L).coerceAtLeast(0L)
     return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }
