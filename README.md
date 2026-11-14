@@ -29,9 +29,11 @@ web apps, use the [original project](https://github.com/kushagrasinghx/BitChord)
 ## Screenshots
 
 <div align="center">
-<img src="new-ui-preview.png" alt="BitChord Desktop Continued on macOS" width="100%" />
+<img src="docs/screenshots/home.png" alt="Home, with the sidebar, centered search and player bar" width="100%" />
 <br/><br/>
-<img src="new-ui-narrow-preview.png" alt="BitChord Desktop Continued in a narrow window" width="60%" />
+<img src="docs/screenshots/player.png" alt="The full player with synced lyrics" width="100%" />
+<br/><br/>
+<img src="docs/screenshots/search.png" alt="Search suggestions and results" width="100%" />
 </div>
 
 ## Features
