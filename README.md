@@ -1,156 +1,112 @@
 <div align="center">
 
-<br/>
-<br/>
+<img src="Logo.png" alt="BitChord app icon" width="160" />
 
-<img src="Logo.png" alt="BitChord app icon" width="200" />
+# BitChord Desktop Continued
 
-# BitChord
-
-### Aesthetic YouTube Music Client
-
-<br/>
-
-[![Latest release](https://img.shields.io/github/v/release/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![License](https://img.shields.io/github/license/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/kushagrasinghx/BitChord/total?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![Listening now](https://api.bitchord.kushagrasingh.in/api/stats/live/badge.svg)](https://api.bitchord.kushagrasingh.in/api/stats/live)
-
-<br/>
-
-[**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
-
-<br/>
-
-<a href="https://fmhy.net/mobile#youtube-music" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/available/fmhy/cozy.svg" alt="Featured on FMHY" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/177639" alt="kushagrasinghx%2FBitChord | Trendshift" width="250" height="55"/></a>
+### The BitChord desktop app, kept going — with a macOS-native redesign
 
 </div>
+
+> **Based on [BitChord](https://github.com/kushagrasinghx/BitChord) by [kushagrasinghx](https://github.com/kushagrasinghx).**
+> The original desktop version was discontinued; this is a continued version.
+> All credit for BitChord itself goes to the original author and its contributors.
 
 > [!IMPORTANT]
 > BitChord is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
 
----
+## What this is
+
+BitChord is a YouTube Music client with an Apple Music-inspired look. The original project
+removed its desktop app (Kotlin Multiplatform + Compose Desktop) in favour of a web player.
+This fork picks the desktop app up from the 1.8 line and continues it, starting with a version
+that feels at home on a Mac.
+
+Only the desktop app is developed here. The Android, backend and shared code in this
+repository are the 1.8 versions the desktop app is built on; for the phone, TV, Wear OS and
+web apps, use the [original project](https://github.com/kushagrasinghx/BitChord).
+
+## Screenshots
 
 <div align="center">
-
-<img src="Banner.png" alt="BitChord banner" width="100%" />
-
-<h1><a id="features"></a>Features</h1>
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-
-#### Playback
-- **Search, browse and play** anything available on YouTube Music.
-- **Hi-Res lossless audio** — FLAC/ALAC from a configured module source, with YouTube Music as fallback.
-- **Gapless playback with true crossfade**, adjustable 0–12s.
-- **Automix [Beta]** — DJ-style transitions with beat-matching and tempo-stretching.
-- **Offline downloads** — save tracks with embedded metadata.
-- **Local music library** integration.
-- **Background playback** via a proper foreground media session.
-- **Apple-like lyrics animation** — credit to [binimum](https://github.com/binimum/am-lyrics).
-
-#### Connectivity & Accounts
-- **Sign in with your Google account** for personalized content.
-- **Spotify integration** — connect your account to play your playlists and Liked Songs.
-- **Discord Rich Presence** — in-app login, live track/artist/album and progress.
-- **Scrobbling** to Last.fm and ListenBrainz.
-- **Pluggable sources** — add, edit, test and health-check module sources.
-
-    </td>
-    <td width="50%" valign="top">
-
-#### Experience
-- **Animated album canvas** — motion artwork on the now-playing screen.
-- **Word-synced lyrics** — word/syllable-level highlighting from multiple sources.
-- **Lyrics providers** — credit to [lrc.red](https://lrc.red), [BiniLyrics](https://github.com/binimum), [BetterLyrics](https://github.com/better-lyrics/better-lyrics), [PaxSenix](https://lyrics.paxsenix.org), [LyricsPlus](https://github.com/ibratabian17/YouLyPlus), [SimpMusic](https://github.com/maxrave-dev/SimpMusic), [Unison](https://unison.boidu.dev), [Megalobiz](https://www.megalobiz.com), [KuGou](https://www.kugou.com), [LRCLIB](https://lrclib.net), [Musixmatch](https://www.musixmatch.com) and [Genius](https://genius.com).
-- **Dynamic, artwork-driven theming** — Material palette extracted from album art.
-- **Frosted-glass UI** — Telegram-style translucent bars via Haze, Material 3 theming.
-
-#### Controls & Tweaks
-- **Per-network audio quality** — separate quality ceilings for Wi-Fi and mobile data.
-- **Playback speed control** (0.5×–2.0×) and **skip silence**.
-- **Sleep timer** — fixed presets or "stop after this track".
-- **System equalizer** integration.
-- **Bit-perfect USB exclusive output** — sends lossless tracks to a USB DAC unchanged, at each track's own rate and bit depth. Thanks to [Mornye](https://github.com/mornyeapp/Mornye) for the reference.
-- **Stats for nerds** — codec, bit depth, sample rate, and more on the now-playing screen.
-
-    </td>
-  </tr>
-</table>
-
+<img src="new-ui-preview.png" alt="BitChord Desktop Continued on macOS" width="100%" />
+<br/><br/>
+<img src="new-ui-narrow-preview.png" alt="BitChord Desktop Continued in a narrow window" width="60%" />
 </div>
 
----
+## Features
 
-<div align="center">
+**New in this continued version**
 
-<h1><a id="download"></a>Download</h1>
+- **Runs on macOS**, built and packaged as a normal Mac app (the original desktop app targeted Linux and Windows only).
+- **Mac-native window**: content runs under the title bar, with the three window buttons in a unified strip.
+- **Centered search bar**, an **Apple Music-style Home** and sidebar, and the **player bar in its own strip** under the page.
+- **Trackpad gestures** that follow your fingers:
+  - swipe or flick **up** on the player bar to open the full player;
+  - swipe or flick **down** on the full player to close it;
+  - swipe **left / right** for the next or previous track;
+  - **scroll over the volume** to change it.
+- **Double-click** empty space in the full player to close it.
+- Faster startup, a fixed seek bar playhead, and no "update available" prompt pointing at phone releases.
 
-<a href="https://github.com/kushagrasinghx/BitChord/releases" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/android/cozy.svg" alt="Download for Android" height="55"/></a>
+**Carried over from BitChord**
 
-Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx/BitChord/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
+- Search, browse and play anything on YouTube Music, with your Google account if you sign in.
+- Gapless playback with crossfade, Automix, an equalizer, and playback speed control.
+- Synced lyrics, queue, downloads and a local music library.
+- Discord Rich Presence, Last.fm and ListenBrainz scrobbling, Listen Together.
 
+## Install
 
-</div>
+### macOS
 
----
+1. Download the `.dmg` from the [Releases page](https://github.com/editorroshan/Bitchord_Desktop_Continued/releases).
+2. Open it and drag **BitChord** into **Applications**.
+3. The app is not signed with an Apple developer certificate, so the first launch is blocked.
+   Open **System Settings › Privacy & Security**, scroll down, and click **Open Anyway** next to BitChord.
 
-<div align="center">
+The download carries its own Java runtime; nothing else needs installing.
 
-<h1><a id="contributing"></a>Contributing</h1>
+### Windows and Linux
 
-We welcome contributions to BitChord! Please review our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a Pull Request.
+There are no ready-made downloads for these yet. The code still supports them, so you can
+[build from source](#build-from-source) on the system you want to run it on. The redesign has
+so far only been tested on macOS, and the finger-following trackpad gestures are macOS-only;
+elsewhere they fall back to simpler scroll-based ones.
 
-[**Contributing Guide**](CONTRIBUTING.md) · [**Code of Conduct**](CODE_OF_CONDUCT.md) · [**Maintainers**](MAINTAINERS.md) · [**Additional Docs**](ADDITIONAL.md)
+## Build from source
 
-### Thanks to all contributors ❤
+You need **Java 21** (a JDK) and git.
 
-<a href="https://github.com/kushagrasinghx/BitChord/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/kushagrasinghx/BitChord/contributors/contributors.svg" />
-</a>
+```bash
+git clone https://github.com/editorroshan/Bitchord_Desktop_Continued.git
+cd Bitchord_Desktop_Continued
+```
 
-</div>
+Run it straight from the source:
 
----
+```bash
+./gradlew :desktopApp:run
+```
 
-<div align="center">
+Build an installer for the system you are on:
 
-<h1><a id="support"></a>Support</h1>
+| System | Command | Result |
+|---|---|---|
+| macOS | `./gradlew :desktopApp:packageDmg` | `desktopApp/build/compose/binaries/main/dmg/` |
+| Windows | `gradlew.bat :desktopApp:packageExe` (or `packageMsi`) | `desktopApp\build\compose\binaries\main\exe\` |
+| Linux | `./gradlew :desktopApp:packageDeb` (or `packageRpm`) | `desktopApp/build/compose/binaries/main/deb/` |
 
-BitChord is free and always will be — if it's earned a spot in your rotation, you can chip in here:
+An installer can only be built on the system it is for. More detail is in [DESKTOP.md](DESKTOP.md).
 
-<a href="https://ko-fi.com/kushagrasinghx" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/kofi-singular-alt/cozy.svg" alt="Support me on Ko-fi" height="55"/></a>
-<a href="https://paypal.me/kuxhagrasingh" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/paypal-plural/cozy.svg" alt="Support us on PayPal" height="55"/></a>
+## Credits
 
-<br/>
-<img src="upi_support.jpg" alt="UPI Support" width="250" />
+- **[kushagrasinghx](https://github.com/kushagrasinghx)** and the BitChord contributors — the original app this is built on.
+- Lyrics animation credit, as in the original: [binimum](https://github.com/binimum/am-lyrics).
+- macOS redesign and continued desktop work: [editorroshan](https://github.com/editorroshan).
 
-</div>
+## License
 
----
-
-<div align="center">
-
-<h1><a id="disclaimer"></a>Disclaimer & Legal Notice</h1>
-
-BitChord is an independent, community-driven third-party audio player and client. It is **not** associated with Google LLC, YouTube Music, Deezer, Telegram, or any of their parent companies.
-
-* **No Media Hosting:** BitChord does not host, upload, or store copyrighted music files. It operates strictly as an interface to scan local device storage or stream media directly from public, public-facing, or user-authenticated APIs.
-* **Fair Use & API Usage:** This software is created solely for personal research, educational, and fair-use purposes. The user is entirely responsible for ensuring their usage aligns with their local copyright laws and YouTube Terms of Service.
-* **No Ad-Blocking Guarantee:** While BitChord focuses on providing a clean listening environment, it does not guarantee permanent bypasses or modifications to commercial third-party platform conditions.
-* **Copyleft:** BitChord is free software under the GPLv3. The license does not let anyone forbid others from selling or redistributing copies, but any distribution must come with the Corresponding Source under the same license.
-
-</div>
-
----
-
-<div align="center">
-
-<h1><a id="license"></a>License</h1>
-
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
-
-</div>
+This project is licensed under the **GNU General Public License v3.0**, the same license as the
+original BitChord. See [LICENSE](LICENSE). You are free to use, change and share it, as long as
+your version stays under the same license and its source code is made available.

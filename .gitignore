@@ -3,6 +3,7 @@
 .vscode/
 /build/
 /app/build/
+/desktopApp/bin/
 build/
 gradle-app.setting
 !gradle-wrapper.jar
@@ -44,9 +45,24 @@ keystore.properties
 AGENTS.md
 /output/
 
-# Built packages — release APKs/bundles are handed out, never committed
+# Built packages and installers — attached to releases, never committed
 *.apk
 *.aab
+*.dmg
+*.exe
+*.msi
+*.deb
+*.rpm
+*.AppImage
 
-# Claude Code session files (launch configs, worktrees)
+# Secrets and local environment
+.env
+.env.*
+
+# Dependencies
+node_modules/
+
+# Local working notes and backups
+HANDOFF.md
+.backup-original-ui/
 .claude/

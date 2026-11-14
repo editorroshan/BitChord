@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -56,15 +55,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
-import com.music.bitchord.ui.components.ExplicitBadge
-import com.music.bitchord.ui.components.menuAnchor
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.icons.BitChordIcons
-import com.music.bitchord.ui.theme.stableStatusBarInsets
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.Song
@@ -150,6 +147,8 @@ internal fun LandscapePlayerLayout(
     lyricsPane: @Composable () -> Unit,
     queuePane: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    /** Extra room kept clear under both columns — see `NowPlayingScreen`'s `landscapeBottomInset`. */
+    bottomInset: Dp = 0.dp,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         background(Modifier.fillMaxSize())
@@ -157,9 +156,7 @@ internal fun LandscapePlayerLayout(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                // The status bar counted whether or not it is showing, so the
-                // layout holds still when the player hides it.
-                .windowInsetsPadding(WindowInsets.safeDrawing.union(stableStatusBarInsets())),
+                .windowInsetsPadding(WindowInsets.safeDrawing),
             contentAlignment = Alignment.TopCenter,
         ) {
             val compact = maxHeight < LANDSCAPE_COMPACT_HEIGHT
@@ -171,7 +168,7 @@ internal fun LandscapePlayerLayout(
                     .fillMaxSize()
                     .padding(
                         top = LANDSCAPE_HANDLE_STRIP,
-                        bottom = if (compact) 8.dp else 20.dp,
+                        bottom = (if (compact) 8.dp else 20.dp) + bottomInset,
                     ),
             ) {
                 Column(
@@ -256,8 +253,7 @@ internal fun LandscapePlayerLayout(
                     .height(5.dp)
                     .shadow(2.dp, RoundedCornerShape(3.dp), clip = false)
                     .clip(RoundedCornerShape(3.dp))
-                    .additiveChrome(LocalPlayerChrome.current)
-                    .background(chromeWhite(0.70f)),
+                    .background(Color.White.copy(alpha = 0.70f)),
             )
         }
     }
@@ -429,20 +425,18 @@ internal fun LandscapeCredits(
         Crossfade(
             targetState = song.title to song.artist,
             animationSpec = tween(durationMillis = 300),
-            modifier = Modifier.weight(1f).additiveChrome(LocalPlayerChrome.current),
+            modifier = Modifier.weight(1f),
             label = "landscapeCredits",
         ) {
             Column {
                 var titleOverflowing by remember { mutableStateOf(false) }
-                val artistColor = chromeWhite(0.55f)
                 MarqueeText(
                     text = song.title,
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
                     onOverflowChange = { titleOverflowing = it },
-                    // Before the title, in the artist line's colour.
                     leading = if (song.isExplicit == true) {
-                        { ExplicitBadge(artistColor) }
+                        { ExplicitBadge(Color.White) }
                     } else {
                         null
                     },
@@ -455,7 +449,7 @@ internal fun LandscapeCredits(
                         artistCredits(song.artist, song.artists, song.artistId)
                     },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.W500),
-                    color = artistColor,
+                    color = Color.White.copy(alpha = 0.55f),
                     // A title that's also scrolling gets to go first — starting
                     // together reads as clutter, so the artist waits a beat.
                     startDelayMillis = if (titleOverflowing) MARQUEE_ARTIST_STAGGER_MS else 0L,
@@ -465,12 +459,12 @@ internal fun LandscapeCredits(
         }
         Spacer(Modifier.width(10.dp))
         // Same gate as the portrait player's: no account to like against for a
-        // guest — but a local file or a finished download is liked on the
-        // device, which needs none.
-        if (signedIn || song.localUri != null) {
+        // guest, and no YouTube identity to rate a local file or a finished
+        // download against either.
+        if (signedIn && song.localUri == null) {
             val liked = likeStatus == LikeStatus.LIKE
             CircleGlyph(
-                icon = if (liked) BitChordIcons.StarFilled else BitChordIcons.Star,
+                icon = if (liked) BitChordIcons.HeartFilled else BitChordIcons.Heart,
                 contentDescription = stringResource(
                     if (liked) Res.string.remove_from_liked else Res.string.like,
                 ),
@@ -484,7 +478,6 @@ internal fun LandscapeCredits(
             icon = if (showRevertCue) Icons.AutoMirrored.Rounded.Undo else Icons.Rounded.MoreHoriz,
             contentDescription = stringResource(Res.string.more),
             onClick = onOpenMenu,
-            modifier = Modifier.menuAnchor(),
         )
     }
 }

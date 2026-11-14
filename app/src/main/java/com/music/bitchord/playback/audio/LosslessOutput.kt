@@ -30,11 +30,9 @@ import java.util.Locale
  *  - **USB:** USB-C headphones, USB DACs and USB audio accessories.
  *  - **HDMI:** HDMI, ARC and eARC (a TV, receiver or soundbar).
  *  - **Dock:** digital and analog docks.
- *  - **Bluetooth A2DP on LDAC, LHDC (V3/V4/V5), aptX Lossless or Samsung's
- *    SSC UHQ.** SBC, AAC, aptX, aptX HD, LC3 (LE Audio) and Opus are all lossy
- *    at bitrates well below CD audio, and do not count — nor does plain SSC,
- *    which tops out at 512 kbps; only its UHQ mode (24-bit/96 kHz, Galaxy S23
- *    and later with Buds3/Buds4) is in LDAC's class.
+ *  - **Bluetooth A2DP on LDAC, LHDC (V3/V4/V5) or aptX Lossless.** SBC, AAC,
+ *    aptX, aptX HD, LC3 (LE Audio) and Opus are all lossy at bitrates well
+ *    below CD audio, and do not count.
  *
  * The phone's own speaker, earpiece, hearing aids, casting and BLE Audio do
  * not count either. Bluetooth is only counted when Android names the codec,
@@ -100,22 +98,18 @@ object LosslessOutput {
             .map { it.type }
             .toSet()
         val telemetry = tracker?.telemetry?.value
-        val named = telemetry?.takeIf { it.hasNamedCodec }
-        val next = decide(outputs, named?.codecName, named?.sampleRateHz)
+        val next = decide(outputs, telemetry?.codecName?.takeIf { telemetry.hasNamedCodec })
         if (next != _state.value) {
-            // The rate is here for codecs we have never seen a phone name —
-            // Wi-Fi earbuds, vendor codecs — so a pasted log shows what to match.
-            TrackLog.d(TAG, "lossless output: $next (outputs=$outputs, codecRate=${named?.sampleRateHz})")
+            TrackLog.d(TAG, "lossless output: $next (outputs=$outputs)")
             _state.value = next
         }
     }
 
     /**
      * The decision itself, from the connected output types and the Bluetooth
-     * codec Android named (null if it named none), with the sample rate that
-     * codec is configured for. Pure, for tests.
+     * codec Android named (null if it named none). Pure, for tests.
      */
-    internal fun decide(outputTypes: Set<Int>, bluetoothCodec: String?, bluetoothSampleRateHz: Int? = null): State {
+    internal fun decide(outputTypes: Set<Int>, bluetoothCodec: String?): State {
         val cabled = when {
             outputTypes.any { it in WIRED } -> Kind.WIRED
             outputTypes.any { it in USB } -> Kind.USB
@@ -126,30 +120,18 @@ object LosslessOutput {
         if (cabled != null) return State(capable = true, via = cabled, bluetoothCodec = bluetoothCodec)
         if (AudioDeviceInfo.TYPE_BLUETOOTH_A2DP !in outputTypes) return State()
         if (bluetoothCodec == null) return State(bluetoothCodecUnknown = true)
-        val lossless = isLosslessBluetoothCodec(bluetoothCodec, bluetoothSampleRateHz)
         return State(
-            capable = lossless,
-            via = Kind.BLUETOOTH.takeIf { lossless },
+            capable = isLosslessBluetoothCodec(bluetoothCodec),
+            via = Kind.BLUETOOTH.takeIf { isLosslessBluetoothCodec(bluetoothCodec) },
             bluetoothCodec = bluetoothCodec,
         )
     }
 
-    /**
-     * LDAC, any LHDC generation, aptX Lossless or SSC UHQ — by the name Android
-     * reports. Samsung's codec may be named for the family alone ("SSC",
-     * "Samsung Seamless") whichever mode it is in, so a Samsung name without
-     * "UHQ" still counts when it runs at 88.2 kHz or above: UHQ is the only
-     * Samsung mode that does.
-     */
-    internal fun isLosslessBluetoothCodec(name: String, sampleRateHz: Int? = null): Boolean {
+    /** LDAC, any LHDC generation, or aptX Lossless — by the name Android reports. */
+    internal fun isLosslessBluetoothCodec(name: String): Boolean {
         val codec = name.uppercase(Locale.ROOT)
-        if ("LDAC" in codec || "LHDC" in codec || ("APTX" in codec && "LOSSLESS" in codec)) return true
-        if ("UHQ" in codec) return true
-        val samsung = SAMSUNG_NAMES.any { it in codec }
-        return samsung && sampleRateHz != null && sampleRateHz >= 88_200
+        return "LDAC" in codec || "LHDC" in codec || ("APTX" in codec && "LOSSLESS" in codec)
     }
-
-    private val SAMSUNG_NAMES = listOf("SSC", "SAMSUNG", "SCALABLE", "SEAMLESS")
 
     // AudioDeviceInfo constants, by value so the newer ones compile into older
     // API levels as the plain ints they are; a phone that predates a type

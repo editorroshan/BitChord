@@ -90,16 +90,10 @@ class EqCurve(
     val gainsDb: FloatArray,
     val qs: FloatArray,
     /**
-     * Make-up attenuation, always at or below zero: half of however far the
-     * curve's loudest point was pushed up.
-     *
-     * Half rather than all of it. Taking the whole boost back assumes the
-     * music has full-scale content sitting exactly on the boosted frequency,
-     * which almost nothing does, and the price of that assumption was every
-     * boost reading as "the track got quieter" — a +6 dB bass lift left the
-     * bass where it was and turned everything else down 6 dB. The overs the
-     * remaining half lets through are rare and brief, and [PeakLimiter] takes
-     * them instead.
+     * Make-up attenuation, always at or below zero. Boosting a band raises the
+     * peak of the signal with it, and 16-bit PCM has no headroom above full
+     * scale to put that in, so the whole curve is pulled down by however much
+     * its loudest point was pushed up.
      */
     val preampDb: Float,
 ) {
@@ -158,7 +152,7 @@ fun toneCurve(x: Int, y: Int, focused: Boolean): EqCurve {
 }
 
 /**
- * How far down the curve is pulled: [MAKEUP_FRACTION] of its peak boost.
+ * How far down the curve has to be pulled to stop it clipping.
  *
  * Taking the largest single band gain would under-read it: the bands overlap,
  * so two neighbours at +6 dB are worth more than +6 dB between them. This walks
@@ -176,7 +170,7 @@ private fun preampFor(gainsDb: FloatArray, qs: FloatArray): Float {
         }
         if (sum > peak) peak = sum
     }
-    return -peak * MAKEUP_FRACTION
+    return -peak
 }
 
 /** Log-spaced across the audible band: 20 Hz to 20 kHz. */
@@ -216,9 +210,6 @@ internal fun sectionGainDb(slot: FilterSlot, gainDb: Float, q: Float, hz: Float)
     }
     return (20.0 * log10(magnitude)).toFloat()
 }
-
-/** How much of a curve's peak boost [preampFor] takes back; [PeakLimiter] covers the rest. */
-private const val MAKEUP_FRACTION = 0.5f
 
 /** Enough to find the peak of a curve this smooth without wasting time on it. */
 private const val RESPONSE_POINTS = 96

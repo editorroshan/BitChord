@@ -1,0 +1,193 @@
+package com.music.bitchord.desktop
+
+import androidx.compose.runtime.CompositionLocalProvider
+import com.music.bitchord.ui.player.PlayerPlatform
+import com.music.bitchord.data.DebugLog
+import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.innertube.InnerTubeXResolver
+import com.music.bitchord.data.innertube.StreamResolver
+import com.music.bitchord.data.innertube.potoken.PoTokenGenerator
+import com.music.bitchord.data.lyrics.LyricsTranslation
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import bitchord.desktopapp.generated.resources.Res
+import bitchord.desktopapp.generated.resources.logo
+import java.awt.Dimension
+import java.awt.Rectangle
+import java.awt.Toolkit
+import kotlin.math.roundToInt
+import org.jetbrains.compose.resources.painterResource
+
+fun main() {
+    // Before anything touches AWT: macOS reads how the app's windows and menus look only once.
+    DesktopMacWindow.configureBeforeAwt()
+    // The player is the phone's, from the shared UI module; this is what it reads underneath.
+    PlayerPlatform.install(DesktopPlayerHost)
+    com.music.bitchord.ui.AppUi.install(DesktopAppUiHost)
+    // The data layer both apps share logs through here, and keeps translated
+    // lyrics beside the rest of the desktop's cache.
+    DebugLog.sink = DebugLog.Sink { level, tag, message, error ->
+        DesktopTrackLog.log("$tag/$level: $message" + (error?.let { " (${it.message})" } ?: ""))
+    }
+    LyricsTranslation.cacheDir = DesktopMediaCache.directory.toFile()
+    // YouTube playback is the phone's StreamResolver over InnerTubeX, with BotGuard PoTokens
+    // minted in JavaFX's WebView where the phone uses Android's.
+    TrackLog.echo = { level, tag, message, error ->
+        DesktopTrackLog.log("$tag/$level: $message" + (error?.let { " (${it.message})" } ?: ""))
+    }
+    // Whoever was signed in last is in force from the very start, from what was saved: the stream
+    // engine below warms up as them, and nothing is first asked for as a guest and then again as
+    // them. Checked with YouTube once the window is up — see DesktopAccounts.activate — which only
+    // changes anything when the account's identity has moved on since.
+    runCatching { DesktopAccounts.applyActive() }
+        .onFailure { DesktopTrackLog.log("accounts: could not restore the saved session early (${it.message})") }
+    StreamResolver.maxKbps = {
+        DesktopStreamClient.ceiling.get() ?: DesktopSourceRegistry.ceiling(null).maxKbps
+    }
+    InnerTubeXResolver.init(
+        filesDir = DesktopMediaCache.directory.toFile(),
+        store = DesktopInnerTubeXStore,
+        poTokenProvider = PoTokenGenerator(
+            createMinter = { DesktopPoTokenWebView.getNewPoTokenGenerator() },
+            available = { DesktopPoTokenWebView.available },
+        ).asTokenProvider(),
+    )
+    // The public "apps open right now" count; see Presence.
+    DesktopPresence.install()
+    desktopMain()
+}
+
+private fun desktopMain() = application {
+    // Closing puts the window away rather than ending the process, while there is a tray icon to
+    // bring it back from — see [DesktopWindowVisibility].
+    val visible by DesktopWindowVisibility.visible.collectAsState()
+    // Hoisted so the player can fill the screen and the caption buttons can maximize — see
+    // [DesktopWindowMode].
+    val placement by DesktopWindowMode.placement.collectAsState()
+    val state = rememberWindowState(
+        width = 1_280.dp,
+        height = 820.dp,
+        // In the middle of the screen rather than wherever the system cascades a first window to.
+        position = WindowPosition.Aligned(Alignment.Center),
+    )
+    LaunchedEffect(placement) { state.placement = placement }
+    // ...and back, for the times the window is moved between placements by something that is not
+    // us; see [DesktopWindowMode.adopt].
+    LaunchedEffect(state) {
+        snapshotFlow { state.placement }.collect(DesktopWindowMode::adopt)
+    }
+    Window(
+        onCloseRequest = { if (DesktopWindowVisibility.onCloseRequest()) exitApplication() },
+        visible = visible,
+        title = "BitChord",
+        icon = painterResource(Res.drawable.logo),
+        state = state,
+        // No system title bar on Windows, where the application draws its own instead — see
+        // [DesktopWindowChrome].
+        undecorated = DesktopPlatform.drawsOwnWindowFrame,
+        // For Mica and Acrylic behind the sidebar and top bar: only a transparent window lets
+        // DWM's material show through the chrome. Fixed at creation, so it is on wherever the
+        // material is possible and the chosen one can be switched live — see [DesktopWindowBackdrop].
+        transparent = DesktopWindowBackdrop.available,
+        resizable = true,
+        // Whatever the page did not want: the transport's shortcuts — see [DesktopCommands].
+        onKeyEvent = DesktopCommands::onWindowKey,
+    ) {
+        val composeWindow = window
+        val openingSize = remember { state.size }
+        // Before the first frame, so the window never shows with a title bar it then loses.
+        remember(composeWindow) { DesktopMacWindow.install(composeWindow) }
+        DesktopMenuBar()
+        LaunchedEffect(composeWindow) {
+            // AWT's default is white, and it is what shows for the frame or two a moved or resized
+            // window takes to repaint: a white band along its edges.
+            // Not over a transparent window, whose clear background is what the material shows
+            // through; DWM moves that window, so there is no band to hide.
+            if (!DesktopWindowBackdrop.available) {
+                composeWindow.background = java.awt.Color.BLACK
+                composeWindow.contentPane.background = java.awt.Color.BLACK
+            }
+            // AWT measures this in device pixels while Compose's window state is in dp. Keeping
+            // the scale in the conversion makes the usable minimum consistent on every display.
+            // Not on macOS, where AWT already works in points: scaled again there, a Retina
+            // display's factor of two made the minimum 1800 points wide — the whole screen — so
+            // the window opened filling it and could not be made any smaller.
+            val transform = composeWindow.graphicsConfiguration.defaultTransform
+            val scaleX = if (DesktopPlatform.isMac) 1.0 else transform.scaleX
+            val scaleY = if (DesktopPlatform.isMac) 1.0 else transform.scaleY
+            composeWindow.minimumSize = Dimension(
+                (MIN_WINDOW_WIDTH_DP * scaleX).roundToInt(),
+                (MIN_WINDOW_HEIGHT_DP * scaleY).roundToInt(),
+            )
+            // Setting AWT's minimum during the first composition can resize the native peer to
+            // that minimum without updating Compose's state. Compose would then keep laying out a
+            // 1220dp surface inside a 900dp window, cropping the right edge and putting its resize
+            // boundary off-screen until a maximize/restore cycle synchronised the two. Re-assert
+            // the requested opening size on the native peer so both layers start in agreement.
+            composeWindow.size = Dimension(
+                (openingSize.width.value * scaleX).roundToInt(),
+                (openingSize.height.value * scaleY).roundToInt(),
+            )
+            // The resize above keeps the corner where it was, which is no longer the middle.
+            if (DesktopPlatform.isMac) {
+                composeWindow.setLocationRelativeTo(null)
+                // The tall title strip the top bar sits in, with the window buttons centred in it.
+                DesktopMacWindow.installUnifiedToolbar("BitChord")
+                DesktopMacWindow.watchFullScreen(composeWindow)
+                // Where swipes begin and end, for the player's gestures — see [DesktopTrackpad].
+                DesktopTrackpad.install()
+            }
+            if (DesktopPlatform.isWindows && DesktopWindowsFrame.install("BitChord")) {
+                DesktopWindowBackdrop.apply()
+            }
+        }
+        val actions = remember {
+            DesktopWindowActions(
+                minimize = {
+                    if (!DesktopWindowsFrame.minimize()) state.isMinimized = true
+                },
+                toggleMaximize = {
+                    if (!DesktopWindowsFrame.toggleMaximize()) {
+                        // An undecorated AWT window otherwise maximizes to the monitor bounds on
+                        // Windows when the native frame bridge is unavailable. Give AWT the
+                        // monitor's usable work area before Compose switches the placement.
+                        if (DesktopPlatform.isWindows && !DesktopWindowMode.maximized.value) {
+                            val screen = composeWindow.graphicsConfiguration.bounds
+                            val insets = Toolkit.getDefaultToolkit().getScreenInsets(
+                                composeWindow.graphicsConfiguration,
+                            )
+                            composeWindow.maximizedBounds = Rectangle(
+                                screen.x + insets.left,
+                                screen.y + insets.top,
+                                screen.width - insets.left - insets.right,
+                                screen.height - insets.top - insets.bottom,
+                            )
+                        }
+                        DesktopWindowMode.toggleMaximized()
+                    }
+                },
+                // The same door the system's close button went through, so the tray keeps the
+                // process alive exactly as it did before.
+                close = { if (DesktopWindowVisibility.onCloseRequest()) exitApplication() },
+            )
+        }
+        CompositionLocalProvider(
+            LocalDesktopWindowActions provides actions,
+            LocalDesktopWindowScope provides this,
+        ) {
+            BitChordDesktopApp()
+        }
+    }
+}
+
+private const val MIN_WINDOW_WIDTH_DP = 900.0
+private const val MIN_WINDOW_HEIGHT_DP = 600.0

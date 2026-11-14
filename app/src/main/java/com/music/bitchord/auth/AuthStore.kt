@@ -69,13 +69,7 @@ class AuthStore(context: Context) {
     }
 
     fun upsertSession(session: GoogleAccountSession, activate: Boolean = true) {
-        val existing = sessions
-        val index = existing.indexOfFirst { it.accountId == session.accountId }
-        val next = if (index >= 0) {
-            existing.toMutableList().also { it[index] = session }
-        } else {
-            existing + session
-        }
+        val next = sessions.filterNot { it.accountId == session.accountId } + session
         replaceSessions(next)
         if (activate) select(session.accountId, session.activeProfileId)
     }
@@ -91,7 +85,6 @@ class AuthStore(context: Context) {
         val fallback = remaining.firstOrNull()
         select(fallback?.accountId.orEmpty(), fallback?.activeProfileId)
         prefs.edit().putString(KEY_COOKIE, fallback?.cookie).apply()
-        BrowserSession.clearGoogleCookies()
         return fallback
     }
 

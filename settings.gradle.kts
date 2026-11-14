@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 rootProject.name = "BitChord"
 include(":shared")
 include(":sharedUi")
+include(":desktopApp")
 
 // The Android module only when there is an SDK to build it against. A machine
 // set up for the desktop alone has none, and including it there fails at
@@ -35,8 +36,6 @@ val androidSdk: String? = file("local.properties")
 
 if (androidSdk != null && file(androidSdk).isDirectory) {
     include(":app")
-    include(":tv")
-    include(":wearos")
 } else {
     logger.lifecycle("No Android SDK found — building the desktop targets only.")
 }

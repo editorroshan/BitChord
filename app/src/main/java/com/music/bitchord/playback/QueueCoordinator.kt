@@ -79,21 +79,9 @@ object QueueCoordinator {
             }
         }
 
-        player.removeRuns(userQueueIndices)
-    }
-
-    /**
-     * Removes the ascending [indices] a contiguous run at a time, last run first
-     * so the indices ahead of each removal still hold. Each call makes Media3
-     * publish the whole queue to the system; see [rotateExpiredHistory].
-     */
-    private fun Player.removeRuns(indices: List<Int>) {
-        var end = indices.size
-        while (end > 0) {
-            var start = end - 1
-            while (start > 0 && indices[start - 1] == indices[start] - 1) start--
-            removeMediaItems(indices[start], indices[end - 1] + 1)
-            end = start
+        // Remove in reverse order to preserve preceding indices during removal
+        for (i in userQueueIndices.asReversed()) {
+            player.removeMediaItem(i)
         }
     }
 
@@ -118,7 +106,9 @@ object QueueCoordinator {
             }
         }
 
-        player.removeRuns(playedIndices)
+        for (i in playedIndices.asReversed()) {
+            player.removeMediaItem(i)
+        }
     }
 
     /** @see QueueTimeline.buildJumpQueue */
@@ -136,49 +126,32 @@ object QueueCoordinator {
         player: Player,
         targetIndex: Int,
         cachedTimeline: List<Song>? = null,
-        tierAt: (Int) -> QueueTier = player::queueTierAt,
-        positionMs: Long = 0L,
-        play: Boolean = true,
     ) {
         val currentIndex = player.currentMediaItemIndex
         val count = player.mediaItemCount
         if (targetIndex !in 0 until count) return
 
-        val tiers = cachedTimeline?.takeIf { it.size == count }?.map { it.queueTier }
-            ?: (0 until count).map { tierAt(it) }
-        val plan = QueueTimeline.computeJumpOrder(tiers, currentIndex, targetIndex) ?: return
-
-        if (plan.isPureSeek) {
-            player.seekTo(plan.newTargetIndex, positionMs)
-            if (play) player.play()
+        if (targetIndex <= currentIndex) {
+            // Backward jump or same track: seek in history without modifying playlist
+            player.seekTo(targetIndex, 0L)
+            player.play()
             return
         }
 
-        val existingItems = (0 until count).map { player.getMediaItemAt(it) }
-        val newItems = plan.newOrderIndices.map { idx ->
-            val item = existingItems[idx]
-            if (idx == targetIndex && plan.promoteTargetToContext) {
-                QueueShuffle.withQueueMetadata(item, newTier = QueueTier.CONTEXT)
-            } else {
-                item
-            }
-        }
+        val currentTimeline = cachedTimeline?.takeIf { it.size == count }
+            ?: (0 until count).map { player.getMediaItemAt(it).toSong() }
+        val newUpcoming = buildJumpQueue(currentTimeline, currentIndex, targetIndex) ?: return
 
-        // Every plan keeps 0..current as it stands, so only the tail is
-        // edited in place. Must run on the session's own player: items read
-        // back through a MediaController have lost their playback URI and are
-        // rebuilt by the session's resolver, which drops the bounded-window
-        // metadata (canonical index, repeat cycle) along with it.
-        val historyKept = plan.newOrderIndices.take(currentIndex + 1) == (0..currentIndex).toList()
-        if (historyKept) {
-            QueueShuffle.replaceChanged(player, currentIndex + 1, count, newItems.drop(currentIndex + 1))
-            player.seekTo(plan.newTargetIndex, positionMs)
-        } else {
-            player.setMediaItems(newItems, plan.newTargetIndex, positionMs)
-        }
+        // Retain played history up to and including currentIndex so backward navigation works
+        val history = (0..currentIndex).map { player.getMediaItemAt(it) }
+        val upcomingMediaItems = newUpcoming.map { it.toMediaItem() }
+
+        val newPlaylist = history + upcomingMediaItems
+        val newTargetIndex = history.size // First track of newUpcoming
+        player.setMediaItems(newPlaylist, newTargetIndex, 0L)
         if (runCatching { player.playbackState }.getOrNull() == Player.STATE_IDLE) {
             player.prepare()
         }
-        if (play) player.play()
+        player.play()
     }
 }
